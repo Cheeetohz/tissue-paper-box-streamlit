@@ -10,7 +10,7 @@ st.set_page_config(page_title="Tissue Paper Box — Portfolio Optimizer", layout
 
 st.title("Tissue Paper Box Global Portfolio Optimizer")
 st.markdown("""
-Analyze and optimize a real-world multi-asset portfolio using Modern Portfolio Theory (MPT).  
+Analyze and optimize a real world multi asset portfolio using Modern Portfolio Theory (MPT).  
 This app uses live market data (NSE/US), Monte Carlo simulation, and SciPy optimization  
 to build and evaluate an optimal portfolio based on the Sharpe ratio.
 """)
@@ -233,4 +233,4 @@ if st.sidebar.button("Run Optimization"):
         ax2.legend()
         st.pyplot(fig2)
 
-        st.success("Simulation complete. This represents real-world portfolio performance.")
+        st.success("Simulation complete. This represents real world portfolio performance.")
