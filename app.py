@@ -32,6 +32,7 @@ if st.sidebar.button("Run Optimization"):
     st.info("Fetching and validating data. Please wait a few seconds.")
 
     valid_data = {}
+    invalid_tickers = []
     summary_rows = []
 
     for t in tickers:
@@ -45,7 +46,7 @@ if st.sidebar.button("Run Optimization"):
                     df = df_recent
                 else:
                     st.error(f"No valid data found for {t}. Skipping.")
-                    summary_rows.append({'Ticker': t, 'Start': '-', 'End': '-', 'Total Days': 0, 'Status': 'No Data'})
+                    invalid_tickers.append(t)
                     continue
 
             df = df['Close'].asfreq('B')
@@ -62,7 +63,14 @@ if st.sidebar.button("Run Optimization"):
 
         except Exception as e:
             st.error(f"Error fetching {t}: {str(e)}")
-            summary_rows.append({'Ticker': t, 'Start': '-', 'End': '-', 'Total Days': 0, 'Status': f'Error: {str(e)[:30]}'})
+            invalid_tickers.append(t)
+            summary_rows.append({
+                'Ticker': t,
+                'Start': '-',
+                'End': '-',
+                'Total Days': 0,
+                'Status': f'Error: {str(e)[:30]}'
+            })
             continue
 
     if not valid_data:
@@ -93,6 +101,9 @@ if st.sidebar.button("Run Optimization"):
     def neg_sharpe(weights):
         return -portfolio_stats(weights)[2]
 
+    def min_vol(weights):
+        return portfolio_stats(weights)[1]
+
     bounds = tuple((0, 1) for _ in range(num_assets))
     constraints = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
     init_guess = np.repeat(1 / num_assets, num_assets)
@@ -101,7 +112,24 @@ if st.sidebar.button("Run Optimization"):
     w_sharpe = opt_sharpe.x
     ret_sharpe, vol_sharpe, sr_sharpe = portfolio_stats(w_sharpe)
 
-    weights_df = pd.DataFrame({'Asset': valid_data.keys(), 'Weight (%)': np.round(w_sharpe * 100, 2)})
+    # Initial equal weights
+    initial_weights = np.repeat(1 / num_assets, num_assets)
+    initial_weights_df = pd.DataFrame({
+        'Asset': valid_data.keys(),
+        'Initial Weight (%)': np.round(initial_weights * 100, 2)
+    })
+
+    # Optimized weights
+    weights_df = pd.DataFrame({
+        'Asset': valid_data.keys(),
+        'Optimized Weight (%)': np.round(w_sharpe * 100, 2)
+    })
+
+    # Merge for comparison
+    comparison_df = initial_weights_df.merge(weights_df, on='Asset')
+    comparison_df['Change (%)'] = np.round(comparison_df['Optimized Weight (%)'] - comparison_df['Initial Weight (%)'], 2)
+    st.subheader("Portfolio Weights: Before vs After Optimization")
+    st.dataframe(comparison_df, use_container_width=True)
 
     # Monte Carlo Simulation
     results = np.zeros((3, num_portfolios))
@@ -118,7 +146,7 @@ if st.sidebar.button("Run Optimization"):
 
     # Risk Metrics
     st.subheader("Risk Metrics")
-    daily_returns = (log_returns * w_sharpe).sum(axis=1) if not log_returns.empty else pd.Series(dtype=float)
+    daily_returns = (log_returns * w_sharpe).sum(axis=1)
 
     if daily_returns.empty or daily_returns.isna().all():
         st.warning("Insufficient data to compute risk metrics. Try a shorter date range or different tickers.")
@@ -168,31 +196,24 @@ if st.sidebar.button("Run Optimization"):
     st.subheader("Portfolio Growth Simulation (₹10 Lakh Initial Investment)")
     initial_investment = 10_00_000
 
-    cumulative_portfolio = pd.Series(dtype=float)
-    cumulative_nifty = pd.Series(dtype=float)
-
-    if not daily_returns.empty:
-        cumulative_portfolio = (1 + daily_returns).cumprod() * initial_investment
+    cumulative_portfolio = (1 + daily_returns).cumprod() * initial_investment
 
     try:
         nifty = yf.download("^NSEI", start=start_date, end=end_date, auto_adjust=True, progress=False)['Close']
-        if not nifty.empty:
-            nifty_returns = np.log(nifty / nifty.shift(1)).dropna()
-            cumulative_nifty = (1 + nifty_returns).cumprod() * initial_investment
-            if not cumulative_portfolio.empty:
-                cumulative_nifty = cumulative_nifty.reindex(cumulative_portfolio.index, method='ffill')
+        nifty_returns = np.log(nifty / nifty.shift(1)).dropna()
+        cumulative_nifty = (1 + nifty_returns).cumprod() * initial_investment
+        cumulative_nifty = cumulative_nifty.reindex(cumulative_portfolio.index, method='ffill')
     except Exception:
         st.warning("Could not fetch NIFTY 50 data for benchmark comparison.")
+        nifty, cumulative_nifty = pd.Series(), pd.Series()
 
-    # Convert final values to scalars safely
-    # Convert final values to scalars safely
+    # Convert final values to scalars
     final_portfolio_value = float(cumulative_portfolio.values[-1]) if not cumulative_portfolio.empty else np.nan
     final_nifty_value = float(cumulative_nifty.values[-1]) if not cumulative_nifty.empty else np.nan
 
-
-    if not pd.isna(final_portfolio_value):
+    if not cumulative_portfolio.empty:
         st.write(f"If you had invested ₹10,00,000 on {start_date.strftime('%d %b %Y')}:")
-        if not pd.isna(final_nifty_value):
+        if cumulative_nifty.empty is False:
             st.markdown(f"""
             - Optimized Portfolio: ₹{final_portfolio_value:,.0f}  
             - NIFTY 50 Benchmark: ₹{final_nifty_value:,.0f}
@@ -200,16 +221,13 @@ if st.sidebar.button("Run Optimization"):
         else:
             st.markdown(f"- Optimized Portfolio: ₹{final_portfolio_value:,.0f}")
 
-    # Plot growth
-    fig2, ax2 = plt.subplots(figsize=(9, 5))
-    if not cumulative_portfolio.empty:
+        fig2, ax2 = plt.subplots(figsize=(9, 5))
         ax2.plot(cumulative_portfolio.index, cumulative_portfolio, label='Optimized Portfolio', color='teal', linewidth=2)
-    if not cumulative_nifty.empty:
-        ax2.plot(cumulative_nifty.index, cumulative_nifty, label='NIFTY 50', color='orange', linestyle='--', linewidth=2)
+        if cumulative_nifty.empty is False:
+            ax2.plot(cumulative_nifty.index, cumulative_nifty, label='NIFTY 50', color='orange', linestyle='--', linewidth=2)
+        ax2.set_title("Portfolio vs Benchmark Growth")
+        ax2.set_ylabel("Portfolio Value (₹)")
+        ax2.legend()
+        st.pyplot(fig2)
 
-    ax2.set_title("Portfolio vs Benchmark Growth")
-    ax2.set_ylabel("Portfolio Value (₹)")
-    ax2.legend()
-    st.pyplot(fig2)
-
-    st.success("Simulation complete. This represents real-world portfolio performance.")
+        st.success("Simulation complete. This represents real-world portfolio performance.")
