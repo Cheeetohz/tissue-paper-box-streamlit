@@ -1,4 +1,4 @@
-Tissue Paper Box — Streamlit Portfolio Optimizer
+Tissue Paper Box Streamlit Portfolio Optimizer
 
 Interactive web app to optimize a **real world portfolio** using Modern Portfolio Theory (MPT).  
 Built with Python, Streamlit, SciPy, and live market data via Yahoo Finance.
