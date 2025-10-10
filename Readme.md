@@ -4,7 +4,7 @@ Interactive web app to optimize a **real world portfolio** using Modern Portfoli
 Built with Python, Streamlit, SciPy, and live market data via Yahoo Finance.
 
 Live Demo
-**
+*https://tissue-paper-box-app.streamlit.app/*
 
 Features
 - Fetches real NSE/US stock & ETF data
