@@ -18,8 +18,8 @@ to build and evaluate an optimal portfolio based on the Sharpe ratio.
 # Sidebar Inputs
 st.sidebar.header("Portfolio Settings")
 tickers_input = st.sidebar.text_input(
-    "Enter comma-separated tickers (e.g. RELIANCE.NS, INFY.NS, TCS.NS, GOLDBEES.NS)",
-    "RELIANCE.NS, INFY.NS, TCS.NS, GOLDBEES.NS, TATAMOTORS.NS"
+    "Enter comma-separated tickers (e.g. RELIANCE.NS, INFY.NS, TCS.NS, GOLDBEES.NS, AAPL)",
+    "RELIANCE.NS, INFY.NS, TCS.NS, GOLDBEES.NS, TATAMOTORS.NS, AAPL"
 )
 tickers = [t.strip() for t in tickers_input.split(",")]
 
@@ -27,6 +27,20 @@ start_date = st.sidebar.date_input("Start Date", pd.to_datetime("2020-01-01"))
 end_date = st.sidebar.date_input("End Date", pd.to_datetime("today"))
 rf = st.sidebar.number_input("Risk-Free Rate (%)", 0.0, 10.0, 3.0)
 num_portfolios = st.sidebar.slider("Number of Random Portfolios", 2000, 20000, 5000, step=1000)
+
+# Function to fetch ticker with auto-detection
+def fetch_ticker(ticker, start, end):
+    
+    suffixes = ["", ".NS", ".BO"]
+    for suffix in suffixes:
+        full_ticker = ticker if suffix == "" else ticker + suffix
+        try:
+            df = yf.download(full_ticker, start=start, end=end, auto_adjust=True, progress=False)
+            if not df.empty:
+                return df, full_ticker
+        except:
+            continue
+    return None, None
 
 if st.sidebar.button("Run Optimization"):
     st.info("Fetching and validating data. Please wait a few seconds.")
@@ -36,42 +50,31 @@ if st.sidebar.button("Run Optimization"):
     summary_rows = []
 
     for t in tickers:
-        try:
-            df = yf.download(t, start=start_date, end=end_date, auto_adjust=True, progress=False)
-            
-            if df.empty:
-                df_recent = yf.download(t, start="2023-01-01", end=end_date, auto_adjust=True, progress=False)
-                if not df_recent.empty:
-                    st.warning(f"Limited data for {t}. Using data from {df_recent.index[0].strftime('%Y-%m-%d')} onward.")
-                    df = df_recent
-                else:
-                    st.error(f"No valid data found for {t}. Skipping.")
-                    invalid_tickers.append(t)
-                    continue
-
-            df = df['Close'].asfreq('B')
-            df = df.ffill().bfill()
-
-            valid_data[t] = df
-            summary_rows.append({
-                'Ticker': t,
-                'Start': df.index[0].strftime('%Y-%m-%d'),
-                'End': df.index[-1].strftime('%Y-%m-%d'),
-                'Total Days': len(df),
-                'Status': 'OK'
-            })
-
-        except Exception as e:
-            st.error(f"Error fetching {t}: {str(e)}")
+        df, used_ticker = fetch_ticker(t, start_date, end_date)
+        if df is None:
+            st.error(f"No valid data found for {t}. Skipping.")
             invalid_tickers.append(t)
             summary_rows.append({
                 'Ticker': t,
                 'Start': '-',
                 'End': '-',
                 'Total Days': 0,
-                'Status': f'Error: {str(e)[:30]}'
+                'Status': 'Invalid'
             })
             continue
+
+        if used_ticker != t:
+            st.info(f"Using ticker {used_ticker} for {t}")
+
+        df = df['Close'].asfreq('B').ffill().bfill()
+        valid_data[used_ticker] = df
+        summary_rows.append({
+            'Ticker': used_ticker,
+            'Start': df.index[0].strftime('%Y-%m-%d'),
+            'End': df.index[-1].strftime('%Y-%m-%d'),
+            'Total Days': len(df),
+            'Status': 'OK'
+        })
 
     if not valid_data:
         st.error("No valid data found for any tickers. Please check inputs and try again.")
@@ -213,7 +216,7 @@ if st.sidebar.button("Run Optimization"):
 
     if not cumulative_portfolio.empty:
         st.write(f"If you had invested ₹10,00,000 on {start_date.strftime('%d %b %Y')}:")
-        if cumulative_nifty.empty is False:
+        if not np.isnan(final_nifty_value):
             st.markdown(f"""
             - Optimized Portfolio: ₹{final_portfolio_value:,.0f}  
             - NIFTY 50 Benchmark: ₹{final_nifty_value:,.0f}
@@ -223,7 +226,7 @@ if st.sidebar.button("Run Optimization"):
 
         fig2, ax2 = plt.subplots(figsize=(9, 5))
         ax2.plot(cumulative_portfolio.index, cumulative_portfolio, label='Optimized Portfolio', color='teal', linewidth=2)
-        if cumulative_nifty.empty is False:
+        if not cumulative_nifty.empty:
             ax2.plot(cumulative_nifty.index, cumulative_nifty, label='NIFTY 50', color='orange', linestyle='--', linewidth=2)
         ax2.set_title("Portfolio vs Benchmark Growth")
         ax2.set_ylabel("Portfolio Value (₹)")
