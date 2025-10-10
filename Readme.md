@@ -4,7 +4,7 @@ Interactive web app to optimize a **real world portfolio** using Modern Portfoli
 Built with Python, Streamlit, SciPy, and live market data via Yahoo Finance.
 
 Live Demo
-*(deploy it on Streamlit Cloud and paste your link here)*
+**
 
 Features
 - Fetches real NSE/US stock & ETF data
