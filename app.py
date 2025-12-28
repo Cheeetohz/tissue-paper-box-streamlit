@@ -1,4 +1,3 @@
-# app.py
 import streamlit as st
 import yfinance as yf
 import numpy as np
@@ -30,12 +29,17 @@ num_portfolios = st.sidebar.slider("Number of Random Portfolios", 2000, 20000, 5
 
 # Function to fetch ticker with auto-detection
 def fetch_ticker(ticker, start, end):
-    
     suffixes = ["", ".NS", ".BO"]
     for suffix in suffixes:
         full_ticker = ticker if suffix == "" else ticker + suffix
         try:
-            df = yf.download(full_ticker, start=start, end=end, auto_adjust=True, progress=False)
+            df = yf.download(
+                full_ticker,
+                start=start,
+                end=end,
+                auto_adjust=True,
+                progress=False
+            )
             if not df.empty:
                 return df, full_ticker
         except:
@@ -104,14 +108,18 @@ if st.sidebar.button("Run Optimization"):
     def neg_sharpe(weights):
         return -portfolio_stats(weights)[2]
 
-    def min_vol(weights):
-        return portfolio_stats(weights)[1]
-
     bounds = tuple((0, 1) for _ in range(num_assets))
     constraints = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
     init_guess = np.repeat(1 / num_assets, num_assets)
 
-    opt_sharpe = minimize(neg_sharpe, init_guess, method='SLSQP', bounds=bounds, constraints=constraints)
+    opt_sharpe = minimize(
+        neg_sharpe,
+        init_guess,
+        method='SLSQP',
+        bounds=bounds,
+        constraints=constraints
+    )
+
     w_sharpe = opt_sharpe.x
     ret_sharpe, vol_sharpe, sr_sharpe = portfolio_stats(w_sharpe)
 
@@ -128,9 +136,12 @@ if st.sidebar.button("Run Optimization"):
         'Optimized Weight (%)': np.round(w_sharpe * 100, 2)
     })
 
-    # Merge for comparison
     comparison_df = initial_weights_df.merge(weights_df, on='Asset')
-    comparison_df['Change (%)'] = np.round(comparison_df['Optimized Weight (%)'] - comparison_df['Initial Weight (%)'], 2)
+    comparison_df['Change (%)'] = np.round(
+        comparison_df['Optimized Weight (%)'] -
+        comparison_df['Initial Weight (%)'], 2
+    )
+
     st.subheader("Portfolio Weights: Before vs After Optimization")
     st.dataframe(comparison_df, use_container_width=True)
 
@@ -145,24 +156,33 @@ if st.sidebar.button("Run Optimization"):
         results[0, i] = port_ret
         results[1, i] = port_vol
         results[2, i] = port_sharpe
-    results_df = pd.DataFrame(results.T, columns=['Return', 'Volatility', 'Sharpe'])
+
+    results_df = pd.DataFrame(
+        results.T,
+        columns=['Return', 'Volatility', 'Sharpe']
+    )
 
     # Risk Metrics
     st.subheader("Risk Metrics")
     daily_returns = (log_returns * w_sharpe).sum(axis=1)
 
     if daily_returns.empty or daily_returns.isna().all():
-        st.warning("Insufficient data to compute risk metrics. Try a shorter date range or different tickers.")
+        st.warning("Insufficient data to compute risk metrics.")
     else:
-        sharpe_ratio = ((daily_returns.mean() - rf_rate / 252) / daily_returns.std()) * np.sqrt(252)
-        downside = daily_returns[daily_returns < 0]
-        sortino_ratio = ((daily_returns.mean() - rf_rate / 252) / downside.std()) * np.sqrt(252) if not downside.empty else np.nan
+        sharpe_ratio = (
+            (daily_returns.mean() - rf_rate / 252) /
+            daily_returns.std()
+        ) * np.sqrt(252)
 
-        try:
-            var_99 = np.percentile(daily_returns.dropna(), 1)
-            cvar_99 = daily_returns[daily_returns <= var_99].mean()
-        except Exception:
-            var_99, cvar_99 = np.nan, np.nan
+        downside = daily_returns[daily_returns < 0]
+        sortino_ratio = (
+            ((daily_returns.mean() - rf_rate / 252) / downside.std())
+            * np.sqrt(252)
+            if not downside.empty else np.nan
+        )
+
+        var_99 = np.percentile(daily_returns.dropna(), 1)
+        cvar_99 = daily_returns[daily_returns <= var_99].mean()
 
         st.markdown(f"""
         **Expected Annual Return:** {ret_sharpe:.2%}  
@@ -175,8 +195,23 @@ if st.sidebar.button("Run Optimization"):
 
     # Efficient Frontier Plot
     fig, ax = plt.subplots(figsize=(9, 6))
-    scatter = ax.scatter(results_df['Volatility'], results_df['Return'], c=results_df['Sharpe'], cmap='viridis', alpha=0.6)
-    ax.scatter(vol_sharpe, ret_sharpe, marker='*', color='red', s=250, label='Max Sharpe Portfolio')
+    scatter = ax.scatter(
+        results_df['Volatility'],
+        results_df['Return'],
+        c=results_df['Sharpe'],
+        cmap='viridis',
+        alpha=0.6
+    )
+
+    ax.scatter(
+        vol_sharpe,
+        ret_sharpe,
+        marker='*',
+        color='red',
+        s=250,
+        label='Max Sharpe Portfolio'
+    )
+
     ax.set_title('Efficient Frontier')
     ax.set_xlabel('Volatility (Risk)')
     ax.set_ylabel('Expected Return')
@@ -193,49 +228,85 @@ if st.sidebar.button("Run Optimization"):
         mime='text/csv'
     )
 
-    st.success("Optimization complete. You can re-run with different tickers or date ranges.")
+    st.success("Optimization complete.")
 
     # Portfolio Growth Simulation
     st.subheader("Portfolio Growth Simulation (₹10 Lakh Initial Investment)")
     initial_investment = 10_00_000
 
-    cumulative_portfolio = (1 + daily_returns).cumprod() * initial_investment
+    cumulative_portfolio = (
+        (1 + daily_returns).cumprod() * initial_investment
+    )
 
     try:
-        nifty = yf.download("^NSEI", start=start_date, end=end_date, auto_adjust=True, progress=False)['Close']
+        nifty = yf.download(
+            "^NSEI",
+            start=start_date,
+            end=end_date,
+            auto_adjust=True,
+            progress=False
+        )['Close']
+
         nifty_returns = np.log(nifty / nifty.shift(1)).dropna()
-        cumulative_nifty = (1 + nifty_returns).cumprod() * initial_investment
+        cumulative_nifty = (
+            (1 + nifty_returns).cumprod() * initial_investment
+        )
+
         cumulative_nifty = cumulative_nifty.reindex(
             cumulative_portfolio.index
         ).ffill()
 
     except Exception:
-        st.warning("Could not fetch NIFTY 50 data for benchmark comparison.")
-        nifty, cumulative_nifty = pd.Series(), pd.Series()
+        st.warning(
+            "Could not fetch NIFTY 50 data for benchmark comparison."
+        )
+        cumulative_nifty = pd.Series()
 
-    # Convert final values to scalars
-    final_portfolio_value = float(cumulative_portfolio.values[-1]) if not cumulative_portfolio.empty else np.nan
+    final_portfolio_value = (
+        float(cumulative_portfolio.values[-1])
+        if not cumulative_portfolio.empty else np.nan
+    )
+
     if isinstance(cumulative_nifty, pd.Series) and not cumulative_nifty.empty:
-    final_nifty_value = cumulative_nifty.dropna().iloc[-1]
-        else:
-            final_nifty_value = np.nan
-        if not cumulative_portfolio.empty:
-        st.write(f"If you had invested ₹10,00,000 on {start_date.strftime('%d %b %Y')}:")
+        final_nifty_value = cumulative_nifty.dropna().iloc[-1]
+    else:
+        final_nifty_value = np.nan
+
+    if not cumulative_portfolio.empty:
+        st.write(
+            f"If you had invested ₹10,00,000 on {start_date.strftime('%d %b %Y')}:"
+        )
+
         if not np.isnan(final_nifty_value):
             st.markdown(f"""
             - Optimized Portfolio: ₹{final_portfolio_value:,.0f}  
             - NIFTY 50 Benchmark: ₹{final_nifty_value:,.0f}
             """)
         else:
-            st.markdown(f"- Optimized Portfolio: ₹{final_portfolio_value:,.0f}")
+            st.markdown(
+                f"- Optimized Portfolio: ₹{final_portfolio_value:,.0f}"
+            )
 
         fig2, ax2 = plt.subplots(figsize=(9, 5))
-        ax2.plot(cumulative_portfolio.index, cumulative_portfolio, label='Optimized Portfolio', color='teal', linewidth=2)
+        ax2.plot(
+            cumulative_portfolio.index,
+            cumulative_portfolio,
+            label='Optimized Portfolio',
+            linewidth=2
+        )
+
         if not cumulative_nifty.empty:
-            ax2.plot(cumulative_nifty.index, cumulative_nifty, label='NIFTY 50', color='orange', linestyle='--', linewidth=2)
+            ax2.plot(
+                cumulative_nifty.index,
+                cumulative_nifty,
+                label='NIFTY 50',
+                linestyle='--',
+                linewidth=2
+            )
+
         ax2.set_title("Portfolio vs Benchmark Growth")
         ax2.set_ylabel("Portfolio Value (₹)")
         ax2.legend()
         st.pyplot(fig2)
 
-        st.success("Simulation complete. This represents real world portfolio performance.")
+        st.success("Simulation complete.")
