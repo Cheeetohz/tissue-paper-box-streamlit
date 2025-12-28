@@ -205,16 +205,21 @@ if st.sidebar.button("Run Optimization"):
         nifty = yf.download("^NSEI", start=start_date, end=end_date, auto_adjust=True, progress=False)['Close']
         nifty_returns = np.log(nifty / nifty.shift(1)).dropna()
         cumulative_nifty = (1 + nifty_returns).cumprod() * initial_investment
-        cumulative_nifty = cumulative_nifty.reindex(cumulative_portfolio.index, method='ffill')
+        cumulative_nifty = cumulative_nifty.reindex(
+            cumulative_portfolio.index
+        ).ffill()
+
     except Exception:
         st.warning("Could not fetch NIFTY 50 data for benchmark comparison.")
         nifty, cumulative_nifty = pd.Series(), pd.Series()
 
     # Convert final values to scalars
     final_portfolio_value = float(cumulative_portfolio.values[-1]) if not cumulative_portfolio.empty else np.nan
-    final_nifty_value = float(cumulative_nifty.values[-1]) if not cumulative_nifty.empty else np.nan
-
-    if not cumulative_portfolio.empty:
+    if isinstance(cumulative_nifty, pd.Series) and not cumulative_nifty.empty:
+    final_nifty_value = cumulative_nifty.dropna().iloc[-1]
+        else:
+            final_nifty_value = np.nan
+        if not cumulative_portfolio.empty:
         st.write(f"If you had invested ₹10,00,000 on {start_date.strftime('%d %b %Y')}:")
         if not np.isnan(final_nifty_value):
             st.markdown(f"""
